@@ -1,17 +1,44 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { cookies } from 'next/headers';
+import { checkSession } from './lib/api/serverApi';
 
 const PRIVATE_ROUTES = ['/notes', '/profile'];
 const AUTH_ROUTES = ['/sign-in', '/sign-up'];
 
-function proxy(request: NextRequest): NextResponse {
+async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
-  const accessToken = request.cookies.get('accessToken');
-  const refreshToken = request.cookies.get('refreshToken');
-  const isAuthenticated = !!(accessToken || refreshToken);
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get('accessToken');
+  const refreshToken = cookieStore.get('refreshToken');
 
   const isPrivateRoute = PRIVATE_ROUTES.some((route) => pathname.startsWith(route));
   const isAuthRoute = AUTH_ROUTES.some((route) => pathname.startsWith(route));
+
+  let isAuthenticated = !!accessToken;
+
+  if (!isAuthenticated && refreshToken) {
+    try {
+      const response = await checkSession();
+      if (response.data.success) {
+        isAuthenticated = true;
+        const nextResponse = isAuthRoute
+          ? NextResponse.redirect(new URL('/profile', request.url))
+          : NextResponse.next();
+
+        const setCookieHeader = response.headers['set-cookie'];
+        if (setCookieHeader) {
+          const cookieArray = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+          cookieArray.forEach((cookie) => {
+            nextResponse.headers.append('Set-Cookie', cookie);
+          });
+        }
+        return nextResponse;
+      }
+    } catch {
+      isAuthenticated = false;
+    }
+  }
 
   if (isPrivateRoute && !isAuthenticated) {
     return NextResponse.redirect(new URL('/sign-in', request.url));
@@ -27,5 +54,5 @@ function proxy(request: NextRequest): NextResponse {
 export { proxy };
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/profile/:path*', '/notes/:path*', '/sign-in', '/sign-up'],
 };

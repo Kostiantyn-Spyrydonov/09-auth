@@ -4,11 +4,13 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { getMe, updateMe } from '@/lib/api/clientApi';
+import { useAuthStore } from '@/lib/store/authStore';
 import type { User } from '@/types/user';
 import css from './page.module.css';
 
 export default function EditProfilePage() {
   const router = useRouter();
+  const { setUser: setAuthUser } = useAuthStore();
   const [user, setUser] = useState<User | null>(null);
   const [username, setUsername] = useState('');
 
@@ -26,7 +28,8 @@ export default function EditProfilePage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     try {
-      await updateMe({ username });
+      const updatedUser = await updateMe({ username });
+      setAuthUser(updatedUser);
       router.push('/profile');
     } catch {
       // handle error silently
